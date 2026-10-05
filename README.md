@@ -1,10 +1,13 @@
 # uipath-install
 
+English | [日本語](README.ja.md)
+
 A PowerShell script that downloads and silently installs UiPath Studio with a single command.
 
-- Install a specific version (e.g. `25.10.3`) or the latest version
+- Install a specific version (e.g. `25.10.15`) or the latest version
 - Choose the Robot mode: **User mode** (default) or **Service mode**
 - Optionally set the Orchestrator URL
+- Handles an existing installation: upgrades an older version, or uninstalls a newer version before installing
 
 ## Requirements
 
@@ -26,7 +29,7 @@ This installs the **latest** version of UiPath Studio in **User mode**.
 
 | Parameter          | Environment variable      | Description                                                           | Default |
 | ------------------ | ------------------------- | --------------------------------------------------------------------- | ------- |
-| `-Version`         | `UIPATH_STUDIO_VERSION`   | Studio version to install (e.g. `25.10.3`)                            | latest  |
+| `-Version`         | `UIPATH_STUDIO_VERSION`   | Studio version to install (e.g. `25.10.15`)                            | latest  |
 | `-Mode`            | `UIPATH_STUDIO_MODE`      | `User` or `Service`                                                   | `User`  |
 | `-OrchestratorUrl` | `UIPATH_ORCHESTRATOR_URL` | Orchestrator URL (passed to the installer as `ORCHESTRATOR_URL`)      | (none)  |
 
@@ -37,7 +40,7 @@ Since `irm ... | iex` cannot pass arguments, use one of the following methods.
 ### Method 1: Environment variables
 
 ```powershell
-$env:UIPATH_STUDIO_VERSION = '25.10.3'
+$env:UIPATH_STUDIO_VERSION = '25.10.15'
 $env:UIPATH_STUDIO_MODE = 'Service'
 irm https://raw.githubusercontent.com/hidecha/uipath-install/main/install.ps1 | iex
 ```
@@ -45,13 +48,13 @@ irm https://raw.githubusercontent.com/hidecha/uipath-install/main/install.ps1 | 
 ### Method 2: Script block with parameters
 
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/hidecha/uipath-install/main/install.ps1))) -Version 25.10.3 -Mode Service
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/hidecha/uipath-install/main/install.ps1))) -Version 25.10.15 -Mode Service
 ```
 
 With an Orchestrator URL:
 
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/hidecha/uipath-install/main/install.ps1))) -Version 25.10.3 -OrchestratorUrl https://cloud.uipath.com/myorg/mytenant/orchestrator_
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/hidecha/uipath-install/main/install.ps1))) -Version 25.10.15 -OrchestratorUrl https://cloud.uipath.com/myorg/mytenant/orchestrator_
 ```
 
 ## What the script does
@@ -59,7 +62,17 @@ With an Orchestrator URL:
 1. Downloads the MSI to `%TEMP%`
    - Specific version: `https://download.uipath.com/versions/{Version}/UiPathStudio.msi`
    - Latest version: `https://download.uipath.com/UiPathStudio.msi`
-2. Runs `msiexec` silently with the following features:
+2. Reads the package version from the MSI and checks for an existing UiPath Studio installation
+   (detected by the MSI UpgradeCode):
+
+   | Existing installation           | Action                                                   |
+   | ------------------------------- | -------------------------------------------------------- |
+   | None                            | New installation                                         |
+   | Older than the package          | Upgrade in place                                         |
+   | Same version as the package     | Nothing to do (the script exits without changes)         |
+   | Newer than the package          | Uninstall the existing version, then install the package |
+
+3. Runs `msiexec` silently with the following features:
 
    | Mode    | `ADDLOCAL`                        |
    | ------- | --------------------------------- |
@@ -72,8 +85,9 @@ With an Orchestrator URL:
    msiexec /i UiPathStudio.msi ADDLOCAL=Studio,Robot[,RegisterService] [ORCHESTRATOR_URL=...] /qn /norestart /l*v <log>
    ```
 
-3. Deletes the downloaded MSI and prints the path of the installation log
-   (`%TEMP%\UiPathStudio-install-<timestamp>.log`).
+4. Deletes the downloaded MSI and prints the path of the installation log
+   (`%TEMP%\UiPathStudio-install-<timestamp>.log`). When an existing version is uninstalled,
+   its log is saved to `%TEMP%\UiPathStudio-uninstall-<timestamp>.log`.
 
 The system is never restarted automatically. If a restart is required, the script displays a message.
 
@@ -83,7 +97,7 @@ The system is never restarted automatically. If a restart is required, the scrip
 | --------------------------------------------- | -------------------------------------------------------------------------------------- |
 | `Administrator privileges are required.`      | Run PowerShell as Administrator.                                                       |
 | `Failed to download the installer ...`        | The version does not exist or the network is blocked. Check the version number.       |
-| `Another version of UiPath Studio is already installed.` | Uninstall the existing UiPath Studio first (e.g. when downgrading).        |
+| `Failed to uninstall UiPath Studio ...`       | Uninstalling the newer existing version failed. See the uninstall log in the message. |
 | `Installation failed with msiexec exit code N` | See the installation log shown in the message.                                        |
 
 If `irm` fails on older Windows PowerShell because of TLS, run this first:
