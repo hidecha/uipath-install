@@ -11,7 +11,7 @@ A PowerShell script that downloads and silently installs UiPath Studio with a si
 
 ## Requirements
 
-- Windows with PowerShell 5.1 or later
+- Windows PowerShell 5.1 or PowerShell 7.x
 - PowerShell running **as Administrator** (the installation is per-machine)
 - Internet access to `raw.githubusercontent.com` and `download.uipath.com`
 

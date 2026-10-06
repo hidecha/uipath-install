@@ -46,8 +46,18 @@ param(
 
 function Invoke-ComMember {
     param($Object, [string]$Name, [string]$Kind, [object[]]$Arguments = $null)
-    # -NoEnumerate keeps COM collections (e.g. StringList) from being unrolled
-    Write-Output -NoEnumerate $Object.GetType().InvokeMember($Name, $Kind, $null, $Object, $Arguments)
+    # The unary comma keeps COM collections (e.g. StringList) from being unrolled.
+    # (Write-Output -NoEnumerate wraps the result in a List on PowerShell 7.)
+    return , $Object.GetType().InvokeMember($Name, $Kind, $null, $Object, $Arguments)
+}
+
+function Remove-ComObject {
+    param($Object)
+    # PowerShell 7 wraps returned COM objects in a PSObject; unwrap before releasing
+    if ($Object -is [psobject]) { $Object = $Object.psobject.BaseObject }
+    if ($null -ne $Object -and [Runtime.InteropServices.Marshal]::IsComObject($Object)) {
+        [void][Runtime.InteropServices.Marshal]::ReleaseComObject($Object)
+    }
 }
 
 function Get-MsiProperties {
@@ -64,16 +74,16 @@ function Get-MsiProperties {
             $record = Invoke-ComMember $view 'Fetch' 'InvokeMethod'
             if ($record) {
                 $result[$name] = Invoke-ComMember $record 'StringData' 'GetProperty' @(1)
-                [void][Runtime.InteropServices.Marshal]::ReleaseComObject($record)
+                Remove-ComObject $record
             }
             [void](Invoke-ComMember $view 'Close' 'InvokeMethod')
-            [void][Runtime.InteropServices.Marshal]::ReleaseComObject($view)
+            Remove-ComObject $view
         }
     }
     finally {
         # Release the database handle so the MSI file is not locked
-        [void][Runtime.InteropServices.Marshal]::ReleaseComObject($database)
-        [void][Runtime.InteropServices.Marshal]::ReleaseComObject($installer)
+        Remove-ComObject $database
+        Remove-ComObject $installer
         [GC]::Collect()
         [GC]::WaitForPendingFinalizers()
     }

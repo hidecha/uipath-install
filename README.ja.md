@@ -11,7 +11,7 @@ UiPath Studio を 1 行のコマンドでダウンロードし、サイレント
 
 ## 前提条件
 
-- PowerShell 5.1 以降が動作する Windows
+- Windows PowerShell 5.1 または PowerShell 7.x
 - **管理者として実行** した PowerShell (マシン単位でインストールするため)
 - `raw.githubusercontent.com` と `download.uipath.com` へのインターネット接続
 
