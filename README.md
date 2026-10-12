@@ -69,7 +69,7 @@ With an Orchestrator URL:
    | ------------------------------- | -------------------------------------------------------- |
    | None                            | New installation                                         |
    | Older than the package          | Upgrade in place                                         |
-   | Same version as the package     | Nothing to do (the script exits without changes)         |
+   | Same version as the package     | Nothing to do if the mode matches; otherwise switch the mode (User ⇔ Service) |
    | Newer than the package          | Uninstall the existing version, then install the package |
 
 3. Runs `msiexec` silently with the following features:
@@ -78,6 +78,9 @@ With an Orchestrator URL:
    | ------- | --------------------------------- |
    | User    | `Studio,Robot`                    |
    | Service | `Studio,Robot,RegisterService`    |
+
+   When switching from Service mode to User mode (including upgrades), `REMOVE=RegisterService` is added,
+   because `ADDLOCAL` alone does not remove the Service mode feature from an existing installation.
 
    Equivalent command:
 

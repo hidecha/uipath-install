@@ -9,7 +9,8 @@
     If UiPath Studio is already installed, the installed version is compared
     with the downloaded one:
       - Newer target version : upgrade in place
-      - Same version         : nothing to do
+      - Same version         : nothing to do, or switch the mode (User/Service)
+                               if the installed mode differs
       - Older target version : uninstall the existing version, then install
 
     Designed to be run as a one-liner:
@@ -100,9 +101,12 @@ function Get-InstalledProducts {
     for ($i = 0; $i -lt $count; $i++) {
         # Cast to [string]; COM calls reject PSObject-wrapped arguments
         $productCode = [string](Invoke-ComMember $related 'Item' 'GetProperty' @($i))
+        # Service mode is the RegisterService feature (3 = local, 4 = source, 5 = default)
+        $serviceState = Invoke-ComMember $installer 'FeatureState' 'GetProperty' @($productCode, 'RegisterService')
         [pscustomobject]@{
             ProductCode = $productCode
             Version     = Invoke-ComMember $installer 'ProductInfo' 'GetProperty' @($productCode, 'VersionString')
+            Mode        = if ($serviceState -in 3, 4, 5) { 'Service' } else { 'User' }
         }
     }
 }
@@ -205,20 +209,26 @@ function Install-UiPathStudio {
         Write-Host "Package version: $targetVersion"
 
         $existing = @(Get-InstalledProducts -UpgradeCode $msiProps['UpgradeCode'])
+        $maintenanceProductCode = $null
         if ($existing.Count -eq 0) {
             Write-Host 'UiPath Studio is not installed. Performing a new installation.'
         }
         else {
             foreach ($product in $existing) {
                 $installedVersion = ConvertTo-NormalizedVersion $product.Version
-                Write-Host "Installed version: $installedVersion ($($product.ProductCode))"
+                Write-Host "Installed version: $installedVersion, $($product.Mode) mode ($($product.ProductCode))"
 
                 if ($targetVersion -gt $installedVersion) {
                     Write-Host "Upgrading UiPath Studio from $installedVersion to $targetVersion."
                 }
                 elseif ($targetVersion -eq $installedVersion) {
-                    Write-Host "UiPath Studio $installedVersion is already installed. Nothing to do." -ForegroundColor Green
-                    return
+                    if ($product.Mode -eq $Mode) {
+                        Write-Host "UiPath Studio $installedVersion is already installed in $Mode mode. Nothing to do." -ForegroundColor Green
+                        return
+                    }
+                    Write-Host "Changing the mode of UiPath Studio $installedVersion from $($product.Mode) to $Mode."
+                    # Modify the installed product (maintenance mode) instead of reinstalling it
+                    $maintenanceProductCode = $product.ProductCode
                 }
                 else {
                     Write-Host "The installed version $installedVersion is newer than $targetVersion. Uninstalling it first (this may take several minutes) ..."
@@ -232,11 +242,16 @@ function Install-UiPathStudio {
         }
 
         $msiArgs = @(
-            '/i', "`"$msiPath`"",
+            '/i', $(if ($maintenanceProductCode) { $maintenanceProductCode } else { "`"$msiPath`"" }),
             "ADDLOCAL=$features",
             '/qn', '/norestart',
             '/l*v', "`"$logPath`""
         )
+        # ADDLOCAL only adds features; Service mode must be removed explicitly
+        # (an upgrade would otherwise carry the RegisterService feature over)
+        if ($Mode -eq 'User' -and @($existing | Where-Object { $_.Mode -eq 'Service' }).Count -gt 0) {
+            $msiArgs += 'REMOVE=RegisterService'
+        }
         if ($OrchestratorUrl) { $msiArgs += "ORCHESTRATOR_URL=`"$OrchestratorUrl`"" }
 
         Write-Host 'Installing UiPath Studio (this may take several minutes) ...'
